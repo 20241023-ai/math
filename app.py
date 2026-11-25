@@ -15,16 +15,13 @@ st.set_page_config(
 )
 
 # =========================================================
-# 2. CSS 디자인
+# 2. 라이트 테마 디자인
 # =========================================================
 st.markdown("""
 <style>
 .stApp {
-    background-color: #0e1117;
-}
-
-[data-testid="stSidebar"] {
-    background-color: #151922;
+    background-color: #ffffff !important;
+    color: #111827 !important;
 }
 
 .block-container {
@@ -33,50 +30,167 @@ st.markdown("""
     padding-bottom: 3rem;
 }
 
+p, li, label, span, div {
+    color: #111827;
+}
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] strong {
+    color: #111827 !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #111827 !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #f8fafc !important;
+    border-right: 1px solid #e5e7eb;
+}
+
+[data-testid="stSidebar"] * {
+    color: #111827 !important;
+}
+
+/* Captions */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    color: #4b5563 !important;
+}
+
+/* Inputs */
+input, textarea {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+}
+
+[data-baseweb="input"] {
+    background-color: #ffffff !important;
+}
+
+[data-baseweb="select"] * {
+    color: #111827 !important;
+}
+
+/* File uploader */
+[data-testid="stFileUploader"] {
+    background-color: #f9fafb !important;
+    border: 1px dashed #94a3b8 !important;
+    border-radius: 15px;
+    padding: 10px;
+}
+
+[data-testid="stFileUploader"] * {
+    color: #111827 !important;
+}
+
+/* Buttons */
+div.stButton > button {
+    border-radius: 12px;
+    min-height: 45px;
+    font-weight: 600;
+    background-color: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #3730a3 !important;
+}
+
+div.stButton > button p,
+div.stButton > button span {
+    color: #3730a3 !important;
+}
+
+div.stButton > button:hover {
+    background-color: #e0e7ff;
+    border-color: #818cf8;
+}
+
+/* Download button */
+[data-testid="stDownloadButton"] button {
+    background-color: #eef2ff !important;
+    color: #3730a3 !important;
+}
+
+[data-testid="stDownloadButton"] button * {
+    color: #3730a3 !important;
+}
+
+/* Hero */
 .hero {
-    padding: 28px;
+    padding: 30px;
     border-radius: 20px;
-    background: linear-gradient(135deg, #252b45, #171c2b);
-    border: 1px solid #30384e;
+    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+    border: 1px solid #c7d2fe;
     margin-bottom: 25px;
 }
 
 .hero h1 {
+    color: #111827 !important;
     margin-bottom: 10px;
     font-size: 2.4rem;
 }
 
 .hero p {
-    color: #b6c1d6;
+    color: #374151 !important;
     font-size: 1.05rem;
 }
 
-div.stButton > button {
+/* Expander */
+[data-testid="stExpander"] {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
     border-radius: 12px;
-    height: 48px;
-    font-weight: 600;
-    transition: 0.2s;
 }
 
-div.stButton > button:hover {
-    border-color: #8b9cff;
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary * {
+    color: #111827 !important;
 }
 
-div[data-testid="stFileUploader"] {
-    border: 1px dashed #53617c;
-    border-radius: 15px;
-    padding: 10px;
+/* Radio */
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] p {
+    color: #111827 !important;
 }
 
-.result-card {
-    padding: 20px;
-    border-radius: 16px;
-    background-color: #171c27;
-    border: 1px solid #30384e;
+/* Checkbox */
+[data-testid="stCheckbox"] label,
+[data-testid="stCheckbox"] p {
+    color: #111827 !important;
 }
 
-.small-muted {
-    color: #9ba7bc;
+/* Alerts */
+[data-testid="stAlert"] * {
+    color: #111827 !important;
+}
+
+/* Code */
+[data-testid="stCode"] pre,
+[data-testid="stCode"] code {
+    color: #111827 !important;
+    background-color: #f3f4f6 !important;
+}
+
+/* Divider */
+hr {
+    border-color: #e5e7eb !important;
+}
+
+/* Form */
+[data-testid="stForm"] {
+    background-color: #ffffff !important;
+}
+
+/* Chat */
+[data-testid="stChatMessage"] {
+    background-color: #f9fafb;
+    border-radius: 12px;
+}
+
+/* Links */
+a {
+    color: #4f46e5 !important;
 }
 
 </style>
@@ -107,8 +221,8 @@ defaults = {
     "uploaded_image": None,
     "history": [],
     "chat_history": [],
-    "recognized_problem": "",
     "last_mode": "",
+    "selected_history": None,
 }
 
 for key, value in defaults.items():
@@ -119,7 +233,6 @@ for key, value in defaults.items():
 # 5. Gemini 호출 함수
 # =========================================================
 def ask_gemini(image, prompt):
-
     response = client.models.generate_content(
         model=MODEL_NAME,
         contents=[image, prompt]
@@ -131,16 +244,14 @@ def ask_gemini(image, prompt):
     return response.text
 
 # =========================================================
-# 6. 프롬프트 설정
+# 6. 프롬프트
 # =========================================================
 PROMPTS = {
 
     "상세 풀이": """
-너는 매우 친절하고 정확한 수학 전문 선생님이다.
+너는 친절하고 정확한 수학 전문 선생님이다.
 
 이미지 속 수학 문제를 읽고 해결하라.
-
-다음 형식으로 답변하라.
 
 ## 1. 문제 분석
 문제의 조건과 구해야 하는 것을 정리한다.
@@ -181,6 +292,7 @@ PROMPTS = {
 주의:
 완전한 정답과 전체 풀이를 바로 공개하지 않는다.
 학생이 직접 생각할 수 있도록 핵심적인 도움만 준다.
+
 한국어로 답한다.
 """,
 
@@ -188,7 +300,7 @@ PROMPTS = {
 너는 수학 전문 선생님이다.
 
 이미지 속 수학 문제를 해결하되,
-가능한 경우 일반적인 풀이와 다른 접근 방법을 제시한다.
+가능한 경우 다른 접근 방법을 제시한다.
 
 ## 사용되는 아이디어
 다른 방법을 사용하기 위해 필요한 개념을 설명한다.
@@ -263,7 +375,6 @@ PROMPTS = {
 with st.sidebar:
 
     st.markdown("## 📐 수학문제 해설")
-
     st.caption("Gemini AI 수학 학습 도우미")
 
     st.divider()
@@ -292,10 +403,8 @@ with st.sidebar:
             reversed(st.session_state.history)
         ):
 
-            label = item["title"]
-
             if st.button(
-                label,
+                item["title"],
                 key=f"history_{i}",
                 use_container_width=True
             ):
@@ -317,7 +426,7 @@ with st.sidebar:
         st.session_state.solution = ""
         st.session_state.chat_history = []
         st.session_state.uploaded_image = None
-        st.session_state.recognized_problem = ""
+        st.session_state.last_mode = ""
         st.rerun()
 
     st.caption("Powered by Gemini")
@@ -343,8 +452,7 @@ st.markdown("### 📷 문제 업로드")
 uploaded_file = st.file_uploader(
     "수학 문제 사진을 선택하세요",
     type=["png", "jpg", "jpeg"],
-    help="문제가 선명하게 보이는 사진을 권장합니다.",
-    key="file_upload"
+    help="문제가 선명하게 보이는 사진을 권장합니다."
 )
 
 # =========================================================
@@ -401,7 +509,6 @@ if current_image is not None:
                 st.session_state.last_mode = mode
                 st.session_state.chat_history = []
 
-                # 기록 저장
                 history_item = {
                     "title": datetime.datetime.now().strftime(
                         "%m/%d %H:%M"
@@ -412,8 +519,6 @@ if current_image is not None:
                 }
 
                 st.session_state.history.append(history_item)
-
-                # 기록 최대 20개 유지
                 st.session_state.history = (
                     st.session_state.history[-20:]
                 )
@@ -423,17 +528,15 @@ if current_image is not None:
                 st.exception(e)
 
 # =========================================================
-# 12. 풀이 결과 표시
+# 12. 풀이 결과
 # =========================================================
 if st.session_state.solution:
 
     st.divider()
-
     st.markdown("## 📝 AI 답변")
 
     st.markdown(st.session_state.solution)
 
-    # 답변 다운로드
     st.download_button(
         label="📥 풀이 다운로드",
         data=st.session_state.solution,
@@ -442,8 +545,7 @@ if st.session_state.solution:
         use_container_width=True
     )
 
-    # 텍스트 복사하기 편하도록 코드 상자 제공
-    with st.expander("📋 풀이 텍스트 복사하기"):
+    with st.expander("📋 풀이 텍스트 보기 및 복사"):
 
         st.code(
             st.session_state.solution,
@@ -454,12 +556,9 @@ if st.session_state.solution:
     # 13. 추가 질문
     # =====================================================
     st.divider()
-
     st.markdown("## 💬 AI 선생님에게 질문")
 
-    st.caption(
-        "풀이에서 이해되지 않는 부분을 질문해 보세요."
-    )
+    st.caption("풀이에서 이해되지 않는 부분을 질문해 보세요.")
 
     with st.form("followup_form"):
 
@@ -537,7 +636,7 @@ if st.session_state.solution:
             st.markdown(chat["answer"])
 
 # =========================================================
-# 14. 새 문제 버튼
+# 14. 새 문제 시작
 # =========================================================
 st.divider()
 
@@ -546,7 +645,6 @@ if st.button("🔄 새 문제 시작", use_container_width=True):
     st.session_state.solution = ""
     st.session_state.uploaded_image = None
     st.session_state.chat_history = []
-    st.session_state.recognized_problem = ""
     st.session_state.last_mode = ""
 
     st.rerun()
@@ -555,7 +653,7 @@ if st.button("🔄 새 문제 시작", use_container_width=True):
 # 15. 하단
 # =========================================================
 st.markdown("""
-<div style="text-align:center; color:#8a94a6; padding:20px;">
+<div style="text-align:center; color:#4b5563; padding:20px;">
     📐 수학문제 해설 · Gemini AI<br>
     <small>AI 풀이를 참고하여 수학 개념을 이해하고 직접 확인해 보세요.</small>
 </div>
