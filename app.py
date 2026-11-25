@@ -3,302 +3,560 @@ import streamlit as st
 from google import genai
 from PIL import Image
 from io import BytesIO
+import datetime
 
-# ==================================================
+# =========================================================
 # 1. 페이지 설정
-# ==================================================
+# =========================================================
 st.set_page_config(
     page_title="수학문제 해설",
     page_icon="📐",
-    layout="centered"
+    layout="wide"
 )
 
-# ==================================================
-# 2. 디자인 CSS
-# ==================================================
+# =========================================================
+# 2. CSS 디자인
+# =========================================================
 st.markdown("""
 <style>
-    .stApp {
-        max-width: 900px;
-        margin: auto;
-    }
+.stApp {
+    background-color: #0e1117;
+}
 
-    h1 {
-        text-align: center;
-        padding-top: 1rem;
-    }
+[data-testid="stSidebar"] {
+    background-color: #151922;
+}
 
-    .subtitle {
-        text-align: center;
-        color: #888888;
-        margin-bottom: 2rem;
-    }
+.block-container {
+    max-width: 1100px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
 
-    div.stButton > button {
-        border-radius: 12px;
-        min-height: 45px;
-        font-weight: bold;
-    }
+.hero {
+    padding: 28px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #252b45, #171c2b);
+    border: 1px solid #30384e;
+    margin-bottom: 25px;
+}
 
-    [data-testid="stFileUploader"] {
-        border-radius: 15px;
-    }
+.hero h1 {
+    margin-bottom: 10px;
+    font-size: 2.4rem;
+}
+
+.hero p {
+    color: #b6c1d6;
+    font-size: 1.05rem;
+}
+
+div.stButton > button {
+    border-radius: 12px;
+    height: 48px;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+div.stButton > button:hover {
+    border-color: #8b9cff;
+}
+
+div[data-testid="stFileUploader"] {
+    border: 1px dashed #53617c;
+    border-radius: 15px;
+    padding: 10px;
+}
+
+.result-card {
+    padding: 20px;
+    border-radius: 16px;
+    background-color: #171c27;
+    border: 1px solid #30384e;
+}
+
+.small-muted {
+    color: #9ba7bc;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# ==================================================
-# 3. Gemini API 클라이언트
-# ==================================================
+# =========================================================
+# 3. Gemini 클라이언트
+# =========================================================
 @st.cache_resource
-def get_client():
+def initialize_client():
     api_key = st.secrets["GEMINI_API_KEY"]
     return genai.Client(api_key=api_key)
 
 try:
-    client = get_client()
+    client = initialize_client()
 except Exception as e:
-    st.error(
-        "Gemini API 설정을 확인해 주세요. "
-        "Streamlit Secrets에 GEMINI_API_KEY가 설정되어 있어야 합니다."
-    )
+    st.error("Gemini API 키 설정을 확인해 주세요.")
+    st.caption(str(e))
     st.stop()
 
 MODEL_NAME = "gemini-3.1-flash-lite"
 
-# ==================================================
-# 4. 제목 및 설명
-# ==================================================
-st.title("📐 수학문제 해설")
+# =========================================================
+# 4. 세션 상태 초기화
+# =========================================================
+defaults = {
+    "solution": "",
+    "uploaded_image": None,
+    "history": [],
+    "chat_history": [],
+    "recognized_problem": "",
+    "last_mode": "",
+}
 
-st.markdown(
-    '<p class="subtitle">'
-    '수학 문제 사진을 올리면 AI가 풀이 과정을 자세히 설명해 줍니다.'
-    '</p>',
-    unsafe_allow_html=True
-)
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
-st.divider()
+# =========================================================
+# 5. Gemini 호출 함수
+# =========================================================
+def ask_gemini(image, prompt):
 
-# ==================================================
-# 5. 이미지 업로드
-# ==================================================
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=[image, prompt]
+    )
+
+    if not response.text:
+        raise ValueError("AI가 빈 답변을 반환했습니다.")
+
+    return response.text
+
+# =========================================================
+# 6. 프롬프트 설정
+# =========================================================
+PROMPTS = {
+
+    "상세 풀이": """
+너는 매우 친절하고 정확한 수학 전문 선생님이다.
+
+이미지 속 수학 문제를 읽고 해결하라.
+
+다음 형식으로 답변하라.
+
+## 1. 문제 분석
+문제의 조건과 구해야 하는 것을 정리한다.
+
+## 2. 핵심 개념
+필요한 개념, 정의, 공식 등을 설명한다.
+공식을 사용하는 이유도 설명한다.
+
+## 3. 단계별 풀이
+풀이를 번호별로 나눈다.
+수식이 만들어지는 이유를 설명한다.
+계산 과정은 최대한 생략하지 않는다.
+
+## 4. 검산 및 확인
+가능한 경우 답이 맞는지 확인한다.
+
+## 5. 최종 답
+최종 답을 명확하게 표시한다.
+
+학생이 원리를 이해할 수 있도록 설명한다.
+한국어로 답하고 Markdown과 LaTeX를 사용한다.
+""",
+
+    "힌트": """
+너는 학생이 스스로 문제를 해결하도록 돕는 수학 튜터이다.
+
+이미지의 수학 문제를 분석하고 다음 형식으로 답변한다.
+
+## 문제에서 알아야 할 것
+문제의 조건과 구해야 하는 것을 정리한다.
+
+## 첫 번째 힌트
+문제를 시작할 수 있도록 핵심 개념을 알려준다.
+
+## 다음 접근 방법
+어떤 공식이나 방법을 생각해야 하는지 알려준다.
+
+주의:
+완전한 정답과 전체 풀이를 바로 공개하지 않는다.
+학생이 직접 생각할 수 있도록 핵심적인 도움만 준다.
+한국어로 답한다.
+""",
+
+    "다른 풀이": """
+너는 수학 전문 선생님이다.
+
+이미지 속 수학 문제를 해결하되,
+가능한 경우 일반적인 풀이와 다른 접근 방법을 제시한다.
+
+## 사용되는 아이디어
+다른 방법을 사용하기 위해 필요한 개념을 설명한다.
+
+## 다른 풀이 과정
+수식과 논리를 단계별로 설명한다.
+
+## 두 방법의 차이
+두 풀이의 장점이나 차이를 간단히 설명한다.
+
+## 최종 답
+답을 명확하게 표시한다.
+
+문제의 특성상 다른 풀이가 적절하지 않다면
+억지로 새로운 방법을 만들지 말고 그 이유를 설명한다.
+
+한국어로 답하고 Markdown과 LaTeX를 사용한다.
+""",
+
+    "유사 문제": """
+너는 수학 교육 전문가이다.
+
+첨부된 이미지의 문제를 분석하여
+비슷한 유형의 연습 문제 3개를 만들어라.
+
+각 문제는 원래 문제와 같은 핵심 개념을 연습하되
+숫자, 조건, 표현을 적절히 바꾸어 구성한다.
+
+## 유사 문제 1
+문제를 제시한다.
+
+## 유사 문제 2
+문제를 제시한다.
+
+## 유사 문제 3
+문제를 제시한다.
+
+## 정답
+각 문제의 정답을 마지막에 모아서 표시한다.
+
+정답만 제공하고 전체 풀이를 공개하지 않는다.
+학생이 먼저 풀어볼 수 있도록 문제와 정답을 분리한다.
+
+한국어로 작성한다.
+""",
+
+    "이해 확인 퀴즈": """
+너는 수학 교육 전문가이다.
+
+첨부된 수학 문제의 핵심 개념을 기반으로
+학생의 이해도를 확인할 수 있는 퀴즈 3개를 만들어라.
+
+문제의 핵심 원리를 확인하는 문제를 만든다.
+단순한 숫자 바꾸기뿐 아니라 개념 이해도 확인을 포함한다.
+
+## 퀴즈
+3개의 문제를 번호별로 제시한다.
+
+## 정답
+정답을 문제와 분리하여 마지막에 제시한다.
+
+## 간단한 설명
+각 정답에 대한 간단한 설명을 추가한다.
+
+한국어로 작성한다.
+"""
+}
+
+# =========================================================
+# 7. 사이드바
+# =========================================================
+with st.sidebar:
+
+    st.markdown("## 📐 수학문제 해설")
+
+    st.caption("Gemini AI 수학 학습 도우미")
+
+    st.divider()
+
+    st.markdown("### 🛠️ 학습 모드")
+
+    mode = st.radio(
+        "모드를 선택하세요",
+        [
+            "상세 풀이",
+            "힌트",
+            "다른 풀이",
+            "유사 문제",
+            "이해 확인 퀴즈"
+        ],
+        label_visibility="collapsed"
+    )
+
+    st.divider()
+
+    st.markdown("### 📚 풀이 기록")
+
+    if st.session_state.history:
+
+        for i, item in enumerate(
+            reversed(st.session_state.history)
+        ):
+
+            label = item["title"]
+
+            if st.button(
+                label,
+                key=f"history_{i}",
+                use_container_width=True
+            ):
+
+                st.session_state.solution = item["solution"]
+                st.session_state.uploaded_image = item["image"]
+                st.session_state.last_mode = item["mode"]
+                st.session_state.chat_history = []
+                st.rerun()
+
+    else:
+        st.caption("아직 풀이 기록이 없습니다.")
+
+    st.divider()
+
+    if st.button("🗑️ 기록 전체 초기화", use_container_width=True):
+
+        st.session_state.history = []
+        st.session_state.solution = ""
+        st.session_state.chat_history = []
+        st.session_state.uploaded_image = None
+        st.session_state.recognized_problem = ""
+        st.rerun()
+
+    st.caption("Powered by Gemini")
+
+# =========================================================
+# 8. 메인 헤더
+# =========================================================
+st.markdown("""
+<div class="hero">
+    <h1>📐 수학문제 해설</h1>
+    <p>
+        사진 한 장으로 시작하는 수학 학습.<br>
+        AI 선생님이 문제를 분석하고 이해하기 쉽게 설명합니다.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# 9. 이미지 업로드
+# =========================================================
+st.markdown("### 📷 문제 업로드")
+
 uploaded_file = st.file_uploader(
-    "📷 수학 문제 사진을 업로드하세요",
+    "수학 문제 사진을 선택하세요",
     type=["png", "jpg", "jpeg"],
-    help="수학 문제가 선명하게 보이는 사진을 업로드하세요."
+    help="문제가 선명하게 보이는 사진을 권장합니다.",
+    key="file_upload"
 )
 
-# ==================================================
-# 6. 이미지 미리보기
-# ==================================================
+# =========================================================
+# 10. 이미지 처리
+# =========================================================
+current_image = None
+
 if uploaded_file is not None:
+
     try:
-        image = Image.open(
+        current_image = Image.open(
             BytesIO(uploaded_file.getvalue())
         ).convert("RGB")
 
-        st.image(
-            image,
-            caption="업로드한 문제",
-            use_container_width=True
-        )
+        st.session_state.uploaded_image = uploaded_file.getvalue()
 
     except Exception:
-        st.error("이미지를 읽을 수 없습니다. 다른 이미지로 시도해 주세요.")
+        st.error("이미지를 불러올 수 없습니다.")
         st.stop()
 
-# ==================================================
-# 7. 풀이 프롬프트
-# ==================================================
-SOLVE_PROMPT = """
-너는 학생에게 수학을 가르치는 친절하고 정확한 수학 선생님이다.
+elif st.session_state.uploaded_image is not None:
 
-첨부된 이미지의 수학 문제를 읽고 문제를 해결해라.
+    current_image = Image.open(
+        BytesIO(st.session_state.uploaded_image)
+    ).convert("RGB")
 
-다음 규칙을 지켜라.
+# =========================================================
+# 11. 이미지 표시 및 풀이 실행
+# =========================================================
+if current_image is not None:
 
-[풀이 규칙]
+    st.image(
+        current_image,
+        caption="업로드한 수학 문제",
+        use_container_width=True
+    )
 
-1. 이미지 속 문제를 먼저 읽고 정확히 파악한다.
-2. 문제에서 구해야 하는 것을 정리한다.
-3. 필요한 수학 개념, 정의 또는 공식을 소개한다.
-4. 풀이를 번호가 있는 단계별 과정으로 작성한다.
-5. 계산 과정을 가능한 한 생략하지 않는다.
-6. 각 식이 어떻게 만들어졌는지 설명한다.
-7. 계산 실수를 점검하고 풀이의 논리적 타당성을 확인한다.
-8. 여러 풀이 방법이 있다면 기본적인 풀이 방법을 먼저 설명한다.
-9. 이미지에서 읽을 수 없는 부분이 있다면 임의로 지어내지 않는다.
-10. 마지막에 최종 답을 분명하게 표시한다.
+    st.markdown(f"**현재 모드:** `{mode}`")
 
-[답변 형식]
+    if st.button("✨ AI 풀이 시작", use_container_width=True):
 
-### 문제 이해
-문제에서 무엇을 구해야 하는지 간단하게 정리한다.
-
-### 핵심 개념
-풀이에 필요한 개념과 공식이 있다면 설명한다.
-
-### 단계별 풀이
-각 단계를 번호로 나누고 자세히 설명한다.
-수식은 LaTeX 형식으로 작성한다.
-
-### 최종 답
-최종 답을 명확하게 정리한다.
-
-학생이 답만 외우는 것이 아니라 풀이 원리를 이해할 수 있도록 설명한다.
-답변은 한국어로 작성한다.
-Markdown을 사용한다.
-"""
-
-# ==================================================
-# 8. 풀이 결과 저장 초기화
-# ==================================================
-if "solution" not in st.session_state:
-    st.session_state.solution = None
-
-if "followup_history" not in st.session_state:
-    st.session_state.followup_history = []
-
-if "image_bytes" not in st.session_state:
-    st.session_state.image_bytes = None
-
-# ==================================================
-# 9. 문제 풀이 버튼
-# ==================================================
-if uploaded_file is not None:
-
-    if st.button("✨ 문제 풀이하기", use_container_width=True):
-
-        st.session_state.solution = None
-        st.session_state.followup_history = []
-        st.session_state.image_bytes = uploaded_file.getvalue()
-
-        with st.spinner("AI 선생님이 문제를 분석하고 있습니다..."):
+        with st.spinner("문제를 분석하고 답변을 작성 중입니다..."):
 
             try:
-                image = Image.open(
-                    BytesIO(st.session_state.image_bytes)
-                ).convert("RGB")
 
-                response = client.models.generate_content(
-                    model=MODEL_NAME,
-                    contents=[
-                        image,
-                        SOLVE_PROMPT
-                    ]
+                prompt = PROMPTS[mode]
+
+                result = ask_gemini(
+                    current_image,
+                    prompt
                 )
 
-                st.session_state.solution = response.text
+                st.session_state.solution = result
+                st.session_state.last_mode = mode
+                st.session_state.chat_history = []
+
+                # 기록 저장
+                history_item = {
+                    "title": datetime.datetime.now().strftime(
+                        "%m/%d %H:%M"
+                    ) + " - " + mode,
+                    "solution": result,
+                    "image": st.session_state.uploaded_image,
+                    "mode": mode
+                }
+
+                st.session_state.history.append(history_item)
+
+                # 기록 최대 20개 유지
+                st.session_state.history = (
+                    st.session_state.history[-20:]
+                )
 
             except Exception as e:
-                st.error(f"풀이 중 오류가 발생했습니다: {e}")
+                st.error("AI 요청 중 오류가 발생했습니다.")
+                st.exception(e)
 
-# ==================================================
-# 10. 풀이 결과 표시
-# ==================================================
+# =========================================================
+# 12. 풀이 결과 표시
+# =========================================================
 if st.session_state.solution:
 
     st.divider()
 
-    st.markdown("## 📝 풀이 결과")
+    st.markdown("## 📝 AI 답변")
 
     st.markdown(st.session_state.solution)
 
-    st.divider()
-
-    # ==================================================
-    # 11. 추가 질문
-    # ==================================================
-    st.markdown("### 💬 풀이에 대해 추가 질문하기")
-
-    followup = st.text_input(
-        "궁금한 부분을 입력하세요",
-        placeholder="예: 왜 이 식에서 양변을 나누나요?",
-        key="followup_input"
+    # 답변 다운로드
+    st.download_button(
+        label="📥 풀이 다운로드",
+        data=st.session_state.solution,
+        file_name="math_solution.md",
+        mime="text/markdown",
+        use_container_width=True
     )
 
-    if st.button("질문하기", use_container_width=True):
+    # 텍스트 복사하기 편하도록 코드 상자 제공
+    with st.expander("📋 풀이 텍스트 복사하기"):
 
-        if not followup.strip():
+        st.code(
+            st.session_state.solution,
+            language="markdown"
+        )
+
+    # =====================================================
+    # 13. 추가 질문
+    # =====================================================
+    st.divider()
+
+    st.markdown("## 💬 AI 선생님에게 질문")
+
+    st.caption(
+        "풀이에서 이해되지 않는 부분을 질문해 보세요."
+    )
+
+    with st.form("followup_form"):
+
+        question = st.text_area(
+            "질문",
+            placeholder="예: 이 부분에서 왜 양변에 2를 곱하나요?",
+            height=100
+        )
+
+        submitted = st.form_submit_button(
+            "질문 보내기",
+            use_container_width=True
+        )
+
+    if submitted:
+
+        if not question.strip():
+
             st.warning("질문을 입력해 주세요.")
 
+        elif st.session_state.uploaded_image is None:
+
+            st.warning("문제 이미지를 다시 업로드해 주세요.")
+
         else:
-            with st.spinner("추가 질문에 답변하는 중..."):
+
+            with st.spinner("답변을 작성 중입니다..."):
 
                 try:
-                    previous_questions = "\n".join(
-                        st.session_state.followup_history
-                    )
 
-                    followup_prompt = f"""
-                    다음은 원래 수학 문제의 풀이이다.
+                    original_image = Image.open(
+                        BytesIO(st.session_state.uploaded_image)
+                    ).convert("RGB")
+
+                    chat_prompt = f"""
+                    원래 문제의 풀이:
 
                     {st.session_state.solution}
 
-                    이전 추가 질문 및 답변:
-                    {previous_questions if previous_questions else "없음"}
+                    학생의 질문:
 
-                    학생의 추가 질문:
-                    {followup}
+                    {question}
 
-                    기존 문제와 풀이 맥락을 고려하여
-                    한국어로 친절하고 자세하게 답변해라.
+                    원래 문제와 풀이 맥락을 고려해서
+                    학생이 이해하기 쉽게 친절하게 설명해라.
 
-                    필요한 경우 예시나 수식을 사용하여 설명하라.
+                    필요하다면 간단한 예시를 들어 설명한다.
+                    한국어로 답하고 Markdown과 LaTeX를 사용한다.
                     """
 
-                    image = Image.open(
-                        BytesIO(st.session_state.image_bytes)
-                    ).convert("RGB")
-
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=[
-                            image,
-                            followup_prompt
-                        ]
+                    answer = ask_gemini(
+                        original_image,
+                        chat_prompt
                     )
 
-                    answer = response.text
-
-                    st.session_state.followup_history.append(
-                        f"질문: {followup}\n답변: {answer}"
+                    st.session_state.chat_history.append(
+                        {
+                            "question": question,
+                            "answer": answer
+                        }
                     )
-
-                    st.markdown("#### 추가 답변")
-                    st.markdown(answer)
 
                 except Exception as e:
-                    st.error(f"추가 질문 처리 중 오류가 발생했습니다: {e}")
 
-    # 이전 추가 질문 표시
-    if st.session_state.followup_history:
+                    st.error("질문 처리 중 오류가 발생했습니다.")
+                    st.exception(e)
 
-        st.divider()
-        st.markdown("### 📚 추가 질문 기록")
+    # 추가 질문 기록
+    for chat in st.session_state.chat_history:
 
-        for item in st.session_state.followup_history:
-            st.markdown(item)
-            st.divider()
+        with st.chat_message("user"):
+            st.markdown(chat["question"])
 
-# ==================================================
-# 12. 초기화 버튼
-# ==================================================
-if st.session_state.solution:
+        with st.chat_message("assistant"):
+            st.markdown(chat["answer"])
 
-    if st.button("🔄 새 문제 풀기", use_container_width=True):
-
-        st.session_state.solution = None
-        st.session_state.followup_history = []
-        st.session_state.image_bytes = None
-
-        st.rerun()
-
-# ==================================================
-# 13. 하단 안내
-# ==================================================
+# =========================================================
+# 14. 새 문제 버튼
+# =========================================================
 st.divider()
 
-st.caption(
-    "Powered by Gemini API · 수학문제 해설"
-)
+if st.button("🔄 새 문제 시작", use_container_width=True):
+
+    st.session_state.solution = ""
+    st.session_state.uploaded_image = None
+    st.session_state.chat_history = []
+    st.session_state.recognized_problem = ""
+    st.session_state.last_mode = ""
+
+    st.rerun()
+
+# =========================================================
+# 15. 하단
+# =========================================================
+st.markdown("""
+<div style="text-align:center; color:#8a94a6; padding:20px;">
+    📐 수학문제 해설 · Gemini AI<br>
+    <small>AI 풀이를 참고하여 수학 개념을 이해하고 직접 확인해 보세요.</small>
+</div>
+""", unsafe_allow_html=True)
