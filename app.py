@@ -9,7 +9,7 @@ import datetime
 # 1. 페이지 설정
 # =========================================================
 st.set_page_config(
-    page_title="수학문제 해설",
+    page_title="MathFlow",
     page_icon="📐",
     layout="wide"
 )
@@ -374,7 +374,7 @@ PROMPTS = {
 # =========================================================
 with st.sidebar:
 
-    st.markdown("## 📐 수학문제 해설")
+    st.markdown("## 📐 MathFlow")
     st.caption("Gemini AI 수학 학습 도우미")
 
     st.divider()
@@ -436,7 +436,7 @@ with st.sidebar:
 # =========================================================
 st.markdown("""
 <div class="hero">
-    <h1>📐 수학문제 해설</h1>
+    <h1>📐 MathFlow</h1>
     <p>
         사진 한 장으로 시작하는 수학 학습.<br>
         AI 선생님이 문제를 분석하고 이해하기 쉽게 설명합니다.
@@ -654,7 +654,7 @@ if st.button("🔄 새 문제 시작", use_container_width=True):
 # =========================================================
 st.markdown("""
 <div style="text-align:center; color:#4b5563; padding:20px;">
-    📐 수학문제 해설 · Gemini AI<br>
+    📐 MathFlow · Gemini AI<br>
     <small>AI 풀이를 참고하여 수학 개념을 이해하고 직접 확인해 보세요.</small>
 </div>
 """, unsafe_allow_html=True)
